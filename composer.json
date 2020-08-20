@@ -1,0 +1,17 @@
+{
+    "name": "antweb/deployer-recipe",
+    "authors": [
+        {
+            "name": "Hui Yang",
+            "email": "chy1988@antwebstudio.com"
+        }
+    ],
+    "autoload": {
+        "files": [
+            "autoload.php"
+        ]
+    },
+    "require": {
+        "deployer/deployer": "^6.8"
+	}
+}

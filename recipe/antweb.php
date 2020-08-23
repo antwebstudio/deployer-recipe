@@ -56,19 +56,42 @@ task('db:download', function() {
 		set('liveFile', $hostname.'_{{application}}_'.date('Y-m-d-His').'.sql.gz');
 		set('liveFilePath', '{{project_path}}/{{liveFile}}');
 		set('localFilePath', './storage/backup');
+		set('localFile', '{{liveFile}}');
+		
+		$canUseRsync = test('[ -x "$(command -v rsync)" ]');
+		
+		if (!$canUseRsync) {
+			if ( test('[ -d {{project_path}}/public ]') ) {
+				set('liveFilePath', '{{project_path}}/public/{{liveFile}}');
+			} else {
+				set('liveFilePath', '{{project_path}}/web/{{liveFile}}');
+			}
+		}
 		
 		// Backup live db
-		run('{{bin/mysqldump}} -u {{liveDbUser}} -p"{{dbPassword}}" {{db}} | {{bin/gzip}} > {{liveFilePath}}');
+		run('if [ -f _dump.sql ]; then unlink _dump.sql; fi');
+		run('if [ -f _dump.sql.gz ]; then unlink _dump.sql.gz; fi');
+		run('{{bin/mysqldump}} --no-tablespaces  -u {{dbUser}} -p"{{dbPassword}}" {{db}} > _dump.sql && {{bin/gzip}} _dump.sql && mv _dump.sql.gz {{liveFilePath}}');
 		
 		//runLocally('cd {{localFilePath}}');
 		
 		//runLocally('wget {{baseUrl}}/{{liveFile}}');
 		
-		download('{{liveFilePath}}', '{{localFilePath}}');
+		runLocally('mkdir -p {{localFilePath}}');
 		
-		runLocally('{{bin/gunzip}} < {{localFilePath}}/{{liveFile}} | mysql -h 127.0.0.1 -D {{localhostDb}} -u root -p"root" --default-character-set=utf8');
+		if ($canUseRsync) {
+			download('{{liveFilePath}}', '{{localFilePath}}/{{localFile}}');
+		} else {
+			runLocally('cd {{localFilePath}} && wget {{baseUrl}}/{{liveFile}}');
+		}
 		
 		run('unlink {{liveFilePath}}');
+		
+		$hostIp = runLocally('cat /etc/resolv.conf | grep nameserver | sed \'s/nameserver\s*//\'');
+		set('localDbHost', $hostIp);
+		
+		runLocally('{{bin/gunzip}} < {{localFilePath}}/{{liveFile}} | mysql -h {{localDbHost}} -D {{localhostDb}} -u root -p"root" --default-character-set=utf8');
+		
 	}
 });
 

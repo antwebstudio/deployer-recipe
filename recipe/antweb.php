@@ -23,6 +23,12 @@ task('info:packages', function() {
 	run('cd {{project_path}} && {{bin/composer}} show antweb/*');
 });
 
+task('info:version', function() {
+	$hostname = Task\Context::get()->getHost()->getHostname();
+	
+	write($hostname.': '.run('cd {{current_path}} && {{bin/git}} log --pretty="%H - %cd" -n 1')."\n");
+});
+
 task('composer:dumpautoload', function() {
 	run('cd {{project_path}} && {{bin/composer}} dumpautoload');
 });

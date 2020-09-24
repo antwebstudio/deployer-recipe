@@ -14,7 +14,8 @@ set('bin/mysqldump', 'mysqldump');
 set('bin/mysql', 'mysql');
 set('bin/gunzip', 'gunzip');
 set('bin/gzip', 'gzip');
-
+set('localDbFilePath', './storage/backup');
+		
 task('ssh-add', function() {
 	runLocally('eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa');
 });
@@ -61,7 +62,6 @@ task('db:download', function() {
 	if (askConfirmation('Are you sure to overwrite local database using live database ?')) {
 		set('liveFile', $hostname.'_{{application}}_'.date('Y-m-d-His').'.sql.gz');
 		set('liveFilePath', '{{project_path}}/{{liveFile}}');
-		set('localFilePath', './storage/backup');
 		set('localFile', '{{liveFile}}');
 		
 		$canUseRsync = test('[ -x "$(command -v rsync)" ]');
@@ -79,24 +79,23 @@ task('db:download', function() {
 		run('if [ -f _dump.sql.gz ]; then unlink _dump.sql.gz; fi');
 		run('{{bin/mysqldump}} --no-tablespaces  -u {{dbUser}} -p"{{dbPassword}}" {{db}} > _dump.sql && {{bin/gzip}} _dump.sql && mv _dump.sql.gz {{liveFilePath}}');
 		
-		//runLocally('cd {{localFilePath}}');
+		//runLocally('cd {{localDbFilePath}}');
 		
 		//runLocally('wget {{baseUrl}}/{{liveFile}}');
 		
-		runLocally('mkdir -p {{localFilePath}}');
+		runLocally('mkdir -p {{localDbFilePath}}');
 		
 		if ($canUseRsync) {
-			download('{{liveFilePath}}', '{{localFilePath}}/{{localFile}}');
+			download('{{liveFilePath}}', '{{localDbFilePath}}/{{localFile}}');
 		} else {
-			runLocally('cd {{localFilePath}} && wget {{baseUrl}}/{{liveFile}}');
+			runLocally('cd {{localDbFilePath}} && wget {{baseUrl}}/{{liveFile}}');
 		}
+		
+		setLocalDbHost();
 		
 		run('unlink {{liveFilePath}}');
 		
-		$hostIp = runLocally('cat /etc/resolv.conf | grep nameserver | sed \'s/nameserver\s*//\'');
-		set('localDbHost', $hostIp);
-		
-		runLocally('{{bin/gunzip}} < {{localFilePath}}/{{liveFile}} | mysql -h {{localDbHost}} -D {{localhostDb}} -u root -p"root" --default-character-set=utf8');
+		runLocally('{{bin/gunzip}} < {{localDbFilePath}}/{{liveFile}} | mysql -h {{localDbHost}} -D {{localhostDb}} -u root -p"root" --default-character-set=utf8');
 		
 	}
 });
@@ -122,11 +121,26 @@ task('db:update_beta', function() {
 		// Backup live db
 		run('{{bin/mysqldump}} -u {{liveDbUser}} -p"{{liveDbPassword}}" {{liveDb}} | {{bin/gzip}} > {{liveFile}}');
 		
-		run('{{bin/mysql}} -u {{dbUser}} -p"{{dbPassword}}" {{db}} -e "DROP DATABASE {{db}}; CREATE DATABASE {{db}}"');
-		
-		// Restore live db to beta db
-		run('{{bin/gunzip}} < {{liveFile}} | mysql -D {{db}} -u {{dbUser}} -p"{{dbPassword}}" --default-character-set=utf8');
+		restoreDb('{{liveFile}}');
 	}
+});
+
+task('db:restore_local', function() {
+	$files = [];
+	$path = get('localDbFilePath');
+	
+	if ($handle = opendir($path)) {
+		while (false !== ($entry = readdir($handle))) {
+			if ($entry != "." && $entry != ".." && (strpos($entry, '.sql') === strlen($entry) - 4 || strpos($entry, '.sql.gz') === strlen($entry) - 7)) {
+				$files[] = $entry;
+			}
+		}
+		closedir($handle);
+	}
+
+	$file = askChoice('Please choose a file (ctrl+z to cancel)', $files);
+	
+	restoreDb($file, ['{{localhostDb}}', 'root', 'root'], false, true);
 });
 
 desc('Deploy your project');
@@ -162,3 +176,28 @@ task('deploy-fusion-cms', [
 task('fusion:symlink', function() {
 	run('cd {{release_path}}/public/vendor && ln -s ../../vendor/fusioncms/cms/public fusion');
 });
+
+function setLocalDbHost() {
+	$hostIp = runLocally('cat /etc/resolv.conf | grep nameserver | sed \'s/nameserver\s*//\'');
+	set('localDbHost', $hostIp);
+}
+
+function restoreDb($file, $db = ['{{db}}', '{{dbUser}}', '{{dbPassword}}'], $useGunzip = true, $runLocally = false) {
+	setLocalDbHost();
+		
+	$host = '-h {{localDbHost}}';
+	$command2prefix = $useGunzip ? '{{bin/gunzip}} < '.$file.' | ' : '';
+	$command2suffix = $useGunzip ? '' : ' < '.$file;
+	
+	$command1 = '{{bin/mysql}} '.$host.' -u '.$db[1].' -p"'.$db[2].'" -e "DROP DATABASE IF EXISTS \`'.$db[0].'\`; CREATE DATABASE \`'.$db[0].'\`"';
+	$command2 = 'mysql '.$host.' -D '.$db[0].' -u '.$db[1].' -p"'.$db[2].'" --default-character-set=utf8';
+	$command2 = $command2prefix . $command2 . $command2suffix;
+	
+	if ($runLocally) {
+		runLocally($command1);
+		runLocally($command2);
+	} else {
+		run($command1);
+		run($command1);
+	}
+}

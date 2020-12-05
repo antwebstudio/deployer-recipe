@@ -1,0 +1,41 @@
+#Normally you will no need to bother this part
+.base: &base
+  identityFile: ~/.ssh/id_rsa
+
+#Change to your host
+.host: &host
+  <<: *base
+  hostname: antwebstudio.com
+  user: antweb
+  port: 22
+
+#Change to your database settings
+.db: &db
+  <<: *host
+  db: 
+  dbUser: 
+  dbPassword: 
+  dbPrefix: 
+
+#Only need to edit this part if you use db:download and db:update_beta command
+.extra: &extra
+  <<: *db
+  liveDbUser: "{{dbUser}}"
+  liveDbPassword: "{{dbPassword}}"
+  liveDb: "{{db}}"
+  localhostDb: "{{application}}"
+
+.app: &app
+  <<: *extra
+  repository: git@bitbucket.org:antwebstudio/xxxxx.git
+  deploy_path: ~/live/{{application}}
+  name: "Ant Web Studio"
+  application: antwebstudio
+  maintenance: false
+  debug: false
+  keep_releases: 3
+  #theme: "{{application}}"
+  #useTranslateManager: false
+
+beta:
+  <<: *app

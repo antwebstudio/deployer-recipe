@@ -13,5 +13,13 @@
     },
     "require": {
         "deployer/deployer": "^6.8"
-	}
+    },
+    "scripts": {
+        "post-package-install": [
+            "@copy-host",
+            "@copy-deploy"
+        ],
+        "copy-host": "@php -r \"file_exists('hosts.yml') || copy('。/vendor/antweb/deployer-recipe/hosts.example.yml', '.env');\"",
+        "copy-deploy": "@php -r \"file_exists('deploy.php') || copy('。/vendor/antweb/deployer-recipe/deploy.example.php', '.env');\""
+    }
 }

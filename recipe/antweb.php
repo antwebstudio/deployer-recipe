@@ -20,6 +20,22 @@ task('ssh-add', function() {
 	runLocally('eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa');
 });
 
+task('ssh-key-copy', function() {
+	runLocally('ssh-copy-id -i ~/.ssh/id_rsa.pub {{user}}@{{hostname}} -p {{port}}');
+});
+
+task('ssh-local', function() {
+	write(runLocally('eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa && ssh-add -L'));
+})->once();
+
+task('ssh-key', function() {
+	write(run('eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa && ssh-add -L'));
+});
+
+task('ssh-generate', function() {
+	run('ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa');
+});
+
 task('info:packages', function() {
 	run('cd {{project_path}} && {{bin/composer}} show antweb/*');
 });
@@ -97,6 +113,8 @@ task('db:download', function() {
 		
 		runLocally('{{bin/gunzip}} < {{localDbFilePath}}/{{liveFile}} | mysql -h {{localDbHost}} -D {{localhostDb}} -u root -p"root" --default-character-set=utf8');
 		
+		// $hostIp = runLocally('cat /etc/resolv.conf | grep nameserver | sed \'s/nameserver\s*//\'');
+		// set('localDbHost', $hostIp);
 	}
 });
 

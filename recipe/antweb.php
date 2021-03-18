@@ -219,3 +219,29 @@ function restoreDb($file, $db = ['{{db}}', '{{dbUser}}', '{{dbPassword}}'], $use
 		run($command1);
 	}
 }
+
+function getAllHosts() {	
+	$deployer = Deployer::get();
+	return array_keys($deployer->hosts->toArray());
+}
+
+function getConsole() {
+	$deployer = Deployer::get();
+	return $deployer->getConsole();
+}
+
+function getQuestionHelper() {
+	$deployer = Deployer::get();
+	return $deployer->getHelper('question');
+}
+
+function getHostConfig($host, $name) {
+	$deployer = Deployer::get();
+	$host = is_object($host) ? $host : $deployer->hosts->get($host);
+
+	if (isset($name)) {
+		return $host->get($name);
+	} else {
+		return $host->config();
+	}
+}

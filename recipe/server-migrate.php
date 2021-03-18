@@ -1,10 +1,33 @@
 <?php
 namespace Deployer;
 
-task('server-migrate:cache', function() use($migrateConfig) {
-	$newServerPath = $migrateConfig['newServerPath'];
+class ServerMigrate {
+	public static $sourceHost = null;
+	public static $destinationHost = null;
 
-	on(host('new'), function($host) use($newServerPath) {
+	public static function askHosts() {
+		if (!isset($sourceHost)) {
+			self::$sourceHost = askChoice('Select source host: ', getAllHosts());
+		}
+		if (!isset($destinationHost)) {
+			self::$destinationHost = askChoice('Select destination host: ', getAllHosts());
+		}
+		return [self::$sourceHost, self::$destinationHost];
+	}
+}
+
+task('server-migrate:ask', function() {	
+	$sourceHost = askChoice('Select source host: ', getAllHosts());
+	$destinationHost = askChoice('Select destination host: ', getAllHosts());
+});
+
+set('downloadUsePath', '');
+
+task('server-migrate:cache', function() {
+	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
+	$newServerPath = getHostConfig($destinationHost, 'deploy_path');
+
+	on(host($destinationHost), function($host) use($newServerPath) {
 		within($newServerPath.'/current', function() {
 			run('if [ -f yii ]; then {{bin/php}} yii cache/flush-all; fi');
 			run('if [ -f artisan ]; then {{bin/php}} artisan cache:clear; fi');
@@ -12,29 +35,40 @@ task('server-migrate:cache', function() use($migrateConfig) {
 	});
 })->local();
 
-task('server-migrate:chmod', function() use($migrateConfig) {
-	$path = $migrateConfig['newServerPath'];
+task('server-migrate:chmod', function() {
+	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
 
+	on(host($destinationHost), function($destinationHost) {
+		$path = getHostConfig($destinationHost, 'deploy_path');
 
-	if (test('[ -d '.$path.'releases ]')) {
-		autoChmod($path.'/releases');
-	} else {
-		autoChmod($path);
-	}
-})->onHosts('new');
-
-task('server-migrate:ls', function() use($migrateConfig) {
-	$path = $migrateConfig['newServerPath'];
-	within($path, function() use($path) {
-		writeln(run('ls -l'));
+		if (test('[ -d '.$path.'releases ]')) {
+			autoChmod($path.'/releases');
+		} else {
+			autoChmod($path);
+		}
 	});
-})->onHosts('new');
+})->local();
 
-task('server-migrate:symlink', function() use($migrateConfig) {
-	$path = $migrateConfig['newServerPath'];
-	$symlinks = $migrateConfig['symlinks'] ?? [];
+task('server-migrate:ls', function() {
+	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
+	
+	on(host($destinationHost), function($destinationHost) {
+		$path = getHostConfig($destinationHost, 'deploy_path');
+		
+		within($path, function() use($path) {
+			writeln(run('ls -l'));
+		});
+	});
+})->local();
 
-	on(host('new'), function($host) use($path, $symlinks) {
+task('server-migrate:symlink', function() {
+	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
+	$path = getHostConfig($destinationHost, 'deploy_path');
+
+	// $symlinks = $migrateConfig['symlinks'] ?? [];
+	$symlinks = [];
+
+	on(host($destinationHost), function($host) use($path, $symlinks) {
 		within($path, function() use($symlinks) {
 			foreach($symlinks as $from => $to) {
 				run('if [ -L '.$from.' ]; then unlink '.$from.'; fi');
@@ -46,6 +80,7 @@ task('server-migrate:symlink', function() use($migrateConfig) {
 })->local();
 
 task('server-migrate', [
+	'server-migrate:ask',
 	'server-migrate:file',
 	'server-migrate:symlink',
 	'server-migrate:db',
@@ -53,20 +88,26 @@ task('server-migrate', [
 	'server-migrate:chmod',
 ]);
 
-task('server-migrate:chown', function() use($migrateConfig) {
-	$username = get('become');
-	$path = $migrateConfig['newServerPath'];
+task('server-migrate:chown', function() {
+	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
 
-	run('chown -R '.$username.':'.$username.' '.$path);
-})->onHosts('new');
+	on(host($destinationHost), function($destinationHost) {
+		$username = get('become');
+		$path = getHostConfig($destinationHost, 'deploy_path');
 
-task('server-migrate:file', function() use($migrateConfig) {
+		run('chown -R '.$username.':'.$username.' '.$path);
+	});
+})->local();
+
+task('server-migrate:file', function() {
+	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
 	$copyToPath = get('downloadUsePath');
-	$path = $migrateConfig['oldServerPath'];
-	$newServerPath = $migrateConfig['newServerPath'];
+	$path = getHostConfig($sourceHost, 'deploy_path');
+	$newServerPath = getHostConfig($destinationHost, 'deploy_path');
+
 	$filename = null;
 	
-	on(host('old'), function($host) use(&$filename, $path, $copyToPath) {
+	on(host($sourceHost), function($host) use(&$filename, $path, $copyToPath) {
 		within($path, function() use(&$filename, $path, $copyToPath) {
 			$filename = zip('*');
 			
@@ -74,7 +115,7 @@ task('server-migrate:file', function() use($migrateConfig) {
 		});
 	});
 
-	on(host('new'), function($host) use($filename, $newServerPath) {
+	on(host($destinationHost), function($host) use($filename, $newServerPath) {
 		within($newServerPath, function() use($filename) {
 			run('if [ -d ./public_html ]; then \rm -r ./public_html; fi');
 
@@ -86,46 +127,61 @@ task('server-migrate:file', function() use($migrateConfig) {
 		});
 	});
 
-	on(host('old'), function($host) use($filename, $copyToPath) {
+	on(host($sourceHost), function($host) use($filename, $copyToPath) {
 		run('unlink '.$copyToPath.'/'.$filename.'.tar.gz');
 	});
 
 })->local();
 
-task('server-migrate:db', function() use($migrateConfig){
+task('server-migrate:db', function(){
+	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
 	$filename = null;
-	$copyToPath = get('downloadUsePath');
-	$newServerPath = $migrateConfig['newServerPath'];
+	$path = getHostConfig($sourceHost, 'deploy_path');
+	// $fileSourcePath = get('downloadUsePath');
+	$fileSourcePath = $path;
+	$newServerPath = getHostConfig($destinationHost, 'deploy_path');
 
-	on(host('old'), function($host) use(&$filename, $copyToPath) {
-		$oldDb = ask('Source DB: ');
-		$oldDbUser = ask('Source DB username: ', $oldDb);
-		$oldDbPassword = ask('Source DB password: ');
+	on(host($sourceHost), function($sourceHost) use(&$filename, $fileSourcePath) {
+		within($fileSourcePath, function() use(&$filename, $fileSourcePath, $sourceHost) {
+			$oldDb = ask('['.$sourceHost.'] Source DB: ', getHostConfig($sourceHost, 'db'));
+			$oldDbUser = ask('['.$sourceHost.'] Source DB username: ', getHostConfig($sourceHost, 'dbUser'));
+			$oldDbPassword = ask('['.$sourceHost.'] Source DB password: ', getHostConfig($sourceHost, 'dbPassword'));
 
-		$filename = dumpDb($oldDb, $oldDbUser, $oldDbPassword);
-		
-		run('mv '.$filename.' '.$copyToPath);
+			$filename = dumpDb($oldDb, $oldDbUser, $oldDbPassword);
+
+			downloadWithScp($fileSourcePath.'/'.$filename, $filename);
+			
+			// run('mv '.$filename.' '.$fileSourcePath);
+		});
 	});
 	
-	on(host('new'), function($host) use($filename, $newServerPath) {
-		within($newServerPath, function() use($filename) {
-			$url = str_replace('{filename}', $filename, get('downloadUrl'));
+	on(host($destinationHost), function($destinationHost) use($filename, $newServerPath) {
+		within($newServerPath, function() use($filename, $newServerPath, $destinationHost) {
+			$newDb = ask('['.$destinationHost.'] Destination DB: ', getHostConfig($destinationHost, 'db'));
+			$newDbUser = ask('['.$destinationHost.'] Destination DB username: ', getHostConfig($destinationHost, 'dbUser'));
+			$newDbPassword = ask('['.$destinationHost.'] Destination DB password: ', getHostConfig($destinationHost, 'dbPassword'));
 			
-			$newDb = ask('Destination DB: ');
-			$newDbUser = ask('Destination DB username: ', $newDb);
-			$newDbPassword = ask('Destination DB password: ');
+			// $url = str_replace('{filename}', $filename, get('downloadUrl'));
+			// downloadToServer($url);
 
-			downloadToServer($url);
+			//downloadFromHost($sourceHost, getHostConfig($sourceHost, 'deploy_path').'/'.$filename, getHostConfig($destinationHost, 'deploy_path'));
+			uploadWithScp($filename, $newServerPath.'/'.$filename);
 
-			restoreDb($newDb, $newDbUser, $newDbPassword, $filename);
+			restoreDb2($newDb, $newDbUser, $newDbPassword, $filename);
 
 			run('unlink '.$filename);
 		});
 	});
 
-	on(host('old'), function($host) use($filename, $copyToPath) {
-		run('unlink '.$copyToPath.'/'.$filename);
+	on(host($sourceHost), function($sourceHost) use($filename, $fileSourcePath) {
+		if (isset($fileSourcePath) && trim($fileSourcePath) != '') {
+			run('unlink '.$fileSourcePath.'/'.$filename);
+		} else {
+			run('unlink '.$filename);
+		}
 	});
+
+	runLocally('unlink '.$filename);
 
 	// $canUseRsync = testIfCanUseRsync();
 
@@ -162,7 +218,7 @@ function dumpDb($db, $username, $password) {
 	return $filename;
 }
 
-function restoreDb($db, $username, $password, $filename) {
+function restoreDb2($db, $username, $password, $filename) {
 	$host = '';
 	$useGunzip = true;
 	// $host = '-h localhost';
@@ -179,3 +235,68 @@ function restoreDb($db, $username, $password, $filename) {
 function downloadToServer($url) {
 	run('wget '.$url);
 }
+
+/*function rsyncAcrossHost($sourceHost, string $source, $destinationHost, string $destination, array $config = []): void
+{
+	$sourceHost = host($sourceHost);
+	$destinationHost = host($destinationHost);
+
+    $rsync = Deployer::get()->rsync;
+    $source = parse($source);
+    $destination = parse($destination);
+
+    // if ($host instanceof Localhost) {
+        // $rsync->call($host, $source, $destination, $config);
+    // } else {
+        $rsync->call($sourceHost, "{$sourceHost->getConnectionString()}:$source", "{$destinationHost->getConnectionString()}:$destination", $config);
+    // }
+}*/
+
+function rsyncFromHost($sourceHost, string $source, string $destination, array $config = [])
+{
+    $rsync = Deployer::get()->rsync;
+	$sourceHost = is_object($sourceHost) ? $sourceHost : host($sourceHost);
+	// $destinationHost = host($destinationHost);
+	$destinationHost = \Deployer\Task\Context::get()->getHost();
+
+	// $mainHost = $sourceHost;
+    // $host = Context::get()->getHost();
+    $source = parse($source);
+    $destination = parse($destination);
+
+    // if ($host instanceof Localhost) {
+    //     $rsync->call($host->getHostname(), $source, $destination, $config);
+    // } else {
+        if (!isset($config['options']) || !is_array($config['options'])) {
+            $config['options'] = [];
+        }
+
+        $sshArguments = $sourceHost->getSshArguments()->getCliArguments();
+        if (empty($sshArguments) === false) {
+            $config['options'][] = "-e 'ssh $sshArguments'";
+        }
+
+        // if ($sourceHost->has("become")) {
+        //     $config['options'][]  = "--rsync-path='sudo -H -u " . $sourceHost->get('become') . " rsync'";
+        // }
+        $rsync->call($destinationHost->getHostname(), "$sourceHost:$source", $destination, $config);
+    // }
+}
+
+function downloadFromHost($sourceHost, string $source, string $destination, array $config = []) {
+	$sourceHost = is_object($sourceHost) ? $sourceHost : host($sourceHost);
+	run('scp -P '.$sourceHost->get('port').' '.$sourceHost.':'.$source.' '.$destination);
+}
+
+function downloadWithScp($source, $destination, $config = []) {
+	// $sourceHost = host($sourceHost);
+	$sourceHost = \Deployer\Task\Context::get()->getHost();
+	runLocally('scp -P '.$sourceHost->get('port').' '.$sourceHost.':'.$source.' '.$destination);
+}
+
+function uploadWithScp($source, $destination, $config = []) {
+	// $destinationHost = host($destinationHost);
+	$destinationHost = \Deployer\Task\Context::get()->getHost();
+	runLocally('scp -P '.$destinationHost->get('port').' '.$source.' '.$destinationHost.':'.$destination);
+}
+

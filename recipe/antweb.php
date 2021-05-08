@@ -186,6 +186,7 @@ desc('Deploy your project');
 task('deploy-fusion-cms', [
 	'deploy-common',
 	'fusion:symlink',
+	'artisan:storage:link',
     'deploy:unlock',
     'cleanup',
     'success'

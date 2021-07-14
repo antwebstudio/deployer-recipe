@@ -6,19 +6,76 @@ class ServerMigrate {
 	public static $destinationHost = null;
 
 	public static function askHosts() {
-		if (!isset($sourceHost)) {
+		if (!isset(self::$sourceHost)) {
 			self::$sourceHost = askChoice('Select source host: ', getAllHosts());
 		}
-		if (!isset($destinationHost)) {
-			self::$destinationHost = askChoice('Select destination host: ', getAllHosts());
+		if (!isset(self::$destinationHost)) {
+			$hosts = [];
+			// Destination host cannot be same as source host.
+			foreach (getAllHosts() as $host) {
+				if ($host != self::$sourceHost) {
+					$hosts[] = $host;
+				}
+			}
+			self::$destinationHost = askChoice('Select destination host: ', $hosts);
 		}
 		return [self::$sourceHost, self::$destinationHost];
+	}
+
+	public static function checkDownloadUsePath($host) {
+		$deployPath = getHostConfig($host, 'deploy_path');
+		// $copyToPath = get('downloadUsePath');
+		// if (!$copyToPath) throw new \Exception('Variable {{downloadUsePath}} is not set. ');
+
+		$copyToPath = $deployPath.'/current/public';
+
+		return $copyToPath;
+	}
+
+	public static function checkDownloadUrl($host) {
+		$baseUrl = getHostConfig($host, 'baseUrl');
+		if (!$baseUrl) throw new \Exception('Variable {{baseUrl}} for host "'.$host.'" is not set. ');
+
+		return $baseUrl;
+	}
+
+	public static function copyFileAcrossHost($sourceHost, $sourcePath, $destinationHost, $destinationPath) {
+		$filename = null;
+		$copyToPath = self::checkDownloadUsePath($sourceHost);
+		$downloadUrl = self::checkDownloadUrl($sourceHost);
+		
+		on(host($sourceHost), function($host) use(&$filename, $sourcePath, $copyToPath) {
+			within($sourcePath, function() use(&$filename, $copyToPath) {
+				$filename = zip('*');
+				
+				run('mv '.$filename.'.tar.gz '.$copyToPath);
+			});
+		});
+
+		on(host($destinationHost), function($host) use($filename, $destinationPath, $downloadUrl) {
+			within($destinationPath, function() use($filename, $downloadUrl) {
+				// run('if [ -d ./public_html ]; then \rm -r ./public_html; fi');
+
+				if (strpos($downloadUrl, '{filename}') !== false) {
+					$url = str_replace('{filename}', $filename.'.tar.gz', $downloadUrl);
+				} else {
+					$url = $downloadUrl.'/'.$filename.'.tar.gz';
+				}
+		
+				downloadToServer($url);
+		
+				unzip($filename);
+			});
+		});
+
+		on(host($sourceHost), function($host) use($filename, $copyToPath) {
+			run('unlink '.$copyToPath.'/'.$filename.'.tar.gz');
+		});
 	}
 }
 
 task('server-migrate:ask', function() {	
-	$sourceHost = askChoice('Select source host: ', getAllHosts());
-	$destinationHost = askChoice('Select destination host: ', getAllHosts());
+	ServerMigrate::askHosts();
 });
 
 set('downloadUsePath', '');
@@ -63,6 +120,7 @@ task('server-migrate:ls', function() {
 
 task('server-migrate:symlink', function() {
 	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
+
 	$path = getHostConfig($destinationHost, 'deploy_path');
 
 	// $symlinks = $migrateConfig['symlinks'] ?? [];
@@ -86,7 +144,7 @@ task('server-migrate', [
 	'server-migrate:db',
 	'server-migrate:cache',
 	'server-migrate:chmod',
-]);
+])->once();
 
 task('server-migrate:chown', function() {
 	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
@@ -101,40 +159,36 @@ task('server-migrate:chown', function() {
 
 task('server-migrate:file', function() {
 	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
-	$copyToPath = get('downloadUsePath');
+	
+	if (!askConfirmation('Are you sure to migrate server files from "'.$sourceHost.'" to "'.$destinationHost.'"?')) return;
+
 	$path = getHostConfig($sourceHost, 'deploy_path');
 	$newServerPath = getHostConfig($destinationHost, 'deploy_path');
 
-	$filename = null;
-	
-	on(host($sourceHost), function($host) use(&$filename, $path, $copyToPath) {
-		within($path, function() use(&$filename, $path, $copyToPath) {
-			$filename = zip('*');
-			
-			run('mv '.$filename.'.tar.gz '.$copyToPath);
-		});
-	});
-
-	on(host($destinationHost), function($host) use($filename, $newServerPath) {
-		within($newServerPath, function() use($filename) {
-			run('if [ -d ./public_html ]; then \rm -r ./public_html; fi');
-
-			$url = str_replace('{filename}', $filename.'.tar.gz', get('downloadUrl'));
-	
-			downloadToServer($url);
-	
-			unzip($filename);
-		});
-	});
-
-	on(host($sourceHost), function($host) use($filename, $copyToPath) {
-		run('unlink '.$copyToPath.'/'.$filename.'.tar.gz');
-	});
-
+	ServerMigrate::copyFileAcrossHost($sourceHost, $path, $destinationHost, $newServerPath);
 })->local();
 
-task('server-migrate:db', function(){
+task('server-migrate:shared', function() {
+	
 	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
+	$copyToPath = ServerMigrate::checkDownloadUsePath($sourceHost);
+	ServerMigrate::checkDownloadUrl($sourceHost);
+
+	writeln('File will be temporarily store in: '. $copyToPath);
+	
+	if (!askConfirmation('Are you sure to migrate server shared files from "'.$sourceHost.'" to "'.$destinationHost.'"?')) return;
+
+	$path = getHostConfig($sourceHost, 'deploy_path');
+	$newServerPath = getHostConfig($destinationHost, 'deploy_path');
+
+	ServerMigrate::copyFileAcrossHost($sourceHost, $path.'/shared', $destinationHost, $newServerPath.'/shared');
+})->local();
+
+task('server-migrate:db', function() {
+	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
+
+	if (!askConfirmation('Are you sure to migrate database from "'.$sourceHost.'" to "'.$destinationHost.'"?')) return;
+
 	$filename = null;
 	$path = getHostConfig($sourceHost, 'deploy_path');
 	// $fileSourcePath = get('downloadUsePath');

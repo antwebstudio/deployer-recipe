@@ -36,6 +36,10 @@ task('ssh-generate', function() {
 	run('ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa');
 });
 
+task('boot', function() {
+	runLocally('cp ./vendor/antweb/deployer-recipe/hosts.example.yml hosts.yml');
+});
+
 task('info:packages', function() {
 	run('cd {{project_path}} && {{bin/composer}} show antweb/*');
 });

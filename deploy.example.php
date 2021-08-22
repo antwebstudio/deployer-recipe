@@ -19,7 +19,7 @@ set('shared_dirs', [
 ]);
 
 // Writable dirs by web server 
-//set('writable_dirs', []);
+set('writable_dirs', []);
 
 /*
 desc('Deploy your project');
@@ -27,3 +27,5 @@ task('deploy', [
     'deploy-fusion-cms',
 ]);
 */
+
+before('deploy:symlink', 'artisan:migrate');

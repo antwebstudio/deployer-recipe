@@ -5,17 +5,17 @@
 # Change to your host
 .host: &host
   <<: *base
-  hostname: antwebstudio.com # change this
+  hostname: server.antwebstudio.com # change this
   user: antweb # change this
   port: 22
 
 # Change to your database settings
 .db: &db
   <<: *host
-  db: 
-  dbUser: 
-  dbPassword: 
-  dbPrefix: 
+  # db: 
+  # dbUser: 
+  # dbPassword: 
+  # dbPrefix: 
 
 # Only need to edit this part if you use db:download and db:update_beta command
 .extra: &extra
@@ -29,10 +29,10 @@
   <<: *extra
   repository: git@bitbucket.org:antwebstudio/xxxxx.git # change this
   deploy_path: ~/live/{{application}} # change this
-  name: "Ant Web Studio"
+  # name: "Ant Web Studio"
   application: antwebstudio
-  maintenance: false
-  debug: false
+  # maintenance: false
+  # debug: false
   keep_releases: 3
   #theme: "{{application}}"
   #useTranslateManager: false

@@ -7,6 +7,9 @@ set('git_tty', true);
 // [Optional] If deploy fails automatically unlock.
 after('deploy:failed', 'deploy:unlock');
 
+// Backup db before deploy
+before('deploy:prepare', 'db:backup');
+
 set('bin/yii', '{{bin/php}} yii');
 set('default_timeout', 0);
 
@@ -41,7 +44,7 @@ task('boot', function() {
 });
 
 task('info:packages', function() {
-	run('cd {{project_path}} && {{bin/composer}} show antweb/*');
+	run('cd {{current_path}} && {{bin/composer}} show antweb/*');
 });
 
 task('info:version', function() {
@@ -51,24 +54,24 @@ task('info:version', function() {
 });
 
 task('composer:dumpautoload', function() {
-	run('cd {{project_path}} && {{bin/composer}} dumpautoload');
+	run('cd {{current_path}} && {{bin/composer}} dumpautoload');
 });
 
 task('composer:install', function() {
-	run('cd {{project_path}} && {{bin/composer}} install --no-dev');
+	run('cd {{current_path}} && {{bin/composer}} install --no-dev');
 });
 
 task('composer:update', function() {
-	run('cd {{project_path}} && {{bin/composer}} update --no-dev');
+	run('cd {{current_path}} && {{bin/composer}} update --no-dev');
 });
 
 task('deploy:install', function () {
-	run('cd {{project_path}} && {{bin/composer}} setup -- --name="{{name}}" --theme={{theme}} --db={{db}} --dbUser={{dbUser}} --dbPassword={{dbPassword}} --dbPrefix={{dbPrefix}} --baseUrl={{baseUrl}} --useTranslateManager={{useTranslateManager}}');
+	run('cd {{current_path}} && {{bin/composer}} setup -- --name="{{name}}" --theme={{theme}} --db={{db}} --dbUser={{dbUser}} --dbPassword={{dbPassword}} --dbPrefix={{dbPrefix}} --baseUrl={{baseUrl}} --useTranslateManager={{useTranslateManager}}');
 	
 	run('cd {{release_path}} && {{bin/yii}} setup --interactive=0');
 	
-	//run("cd {{project_path}}/web && {{bin/symlink}} {{project_path}}/backend/web admin");
-	//run("cd {{project_path}}/web && {{bin/symlink}} {{project_path}}/storage/web storage");
+	//run("cd {{current_path}}/web && {{bin/symlink}} {{current_path}}/backend/web admin");
+	//run("cd {{current_path}}/web && {{bin/symlink}} {{current_path}}/storage/web storage");
 });
 
 task('deploy:file_permission', function() {
@@ -76,46 +79,31 @@ task('deploy:file_permission', function() {
 	run('cd {{release_path}} && find ./ -type f -exec chmod 644 {} \;');
 });
 
+task('db:backup', function() {
+	$hostname = Task\Context::get()->getHost()->getHostname();
+	list($filename, $liveFilePath) = backupServerDb($hostname, '{{deploy_path}}/current');
+	write('Backup: '.$liveFilePath);
+});
+
 task('db:download', function() {
 	$hostname = Task\Context::get()->getHost()->getHostname();
 	
 	if (askConfirmation('Are you sure to overwrite local database using live database ?')) {
-		set('liveFile', $hostname.'_{{application}}_'.date('Y-m-d-His').'.sql.gz');
-		set('liveFilePath', '{{project_path}}/{{liveFile}}');
-		set('localFile', '{{liveFile}}');
-		
-		$canUseRsync = test('[ -x "$(command -v rsync)" ]');
-		
-		if (!$canUseRsync) {
-			if ( test('[ -d {{project_path}}/public ]') ) {
-				set('liveFilePath', '{{project_path}}/public/{{liveFile}}');
-			} else {
-				set('liveFilePath', '{{project_path}}/web/{{liveFile}}');
-			}
-		}
-		
-		// Backup live db
-		run('if [ -f _dump.sql ]; then unlink _dump.sql; fi');
-		run('if [ -f _dump.sql.gz ]; then unlink _dump.sql.gz; fi');
-		run('{{bin/mysqldump}} --no-tablespaces  -u {{dbUser}} -p"{{dbPassword}}" {{db}} > _dump.sql && {{bin/gzip}} _dump.sql && mv _dump.sql.gz {{liveFilePath}}');
-		
-		//runLocally('cd {{localDbFilePath}}');
-		
-		//runLocally('wget {{baseUrl}}/{{liveFile}}');
+		list($filename, $liveFilePath) = backupServerDb($hostname);
 		
 		runLocally('mkdir -p {{localDbFilePath}}');
 		
-		if ($canUseRsync) {
-			download('{{liveFilePath}}', '{{localDbFilePath}}/{{localFile}}');
+		if (canUseRsync()) {
+			download($liveFilePath, '{{localDbFilePath}}/'.$filename);
 		} else {
-			runLocally('cd {{localDbFilePath}} && wget {{baseUrl}}/{{liveFile}}');
+			runLocally('cd {{localDbFilePath}} && wget {{baseUrl}}/'.$filename);
 		}
 		
 		setLocalDbHost();
 		
-		run('unlink {{liveFilePath}}');
+		run('unlink '.$liveFilePath);
 		
-		runLocally('{{bin/gunzip}} < {{localDbFilePath}}/{{liveFile}} | mysql -h {{localDbHost}} -D {{localhostDb}} -u root -p"root" --default-character-set=utf8');
+		runLocally('{{bin/gunzip}} < {{localDbFilePath}}/'.$filename.' | mysql -h {{localDbHost}} -D {{localhostDb}} -u root -p"root" --default-character-set=utf8');
 		
 		// $hostIp = runLocally('cat /etc/resolv.conf | grep nameserver | sed \'s/nameserver\s*//\'');
 		// set('localDbHost', $hostIp);
@@ -199,6 +187,30 @@ task('deploy-fusion-cms', [
 task('fusion:symlink', function() {
 	run('cd {{release_path}}/public/vendor && ln -s ../../vendor/fusioncms/cms/public fusion');
 });
+
+function canUseRsync() {
+	return test('[ -x "$(command -v rsync)" ]');
+}
+
+function backupServerDb($hostname, $backupPath = '{{current_path}}') {
+	$filename = $hostname.'_{{application}}_'.date('Y-m-d-His').'.sql.gz';
+	$liveFilePath = $backupPath.'/'.$filename;
+	
+	if (!canUseRsync()) {
+		if ( test('[ -d '.$backupPath.'/public ]') ) {
+			$liveFilePath = $backupPath.'/public/'.$filename;
+		} else {
+			$liveFilePath = $backupPath.'/web/'.$filename;
+		}
+	}
+	
+	// Backup live db
+	run('if [ -f _dump.sql ]; then unlink _dump.sql; fi');
+	run('if [ -f _dump.sql.gz ]; then unlink _dump.sql.gz; fi');
+	run('{{bin/mysqldump}} --no-tablespaces  -u {{dbUser}} -p"{{dbPassword}}" {{db}} > _dump.sql && {{bin/gzip}} _dump.sql && mv _dump.sql.gz '.$liveFilePath);
+
+	return [$filename, $liveFilePath];
+}
 
 function setLocalDbHost() {
 	$hostIp = runLocally('cat /etc/resolv.conf | grep nameserver | sed \'s/nameserver\s*//\'');

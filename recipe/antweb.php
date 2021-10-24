@@ -147,10 +147,10 @@ task('db:restore_local', function() {
 		}
 		closedir($handle);
 	}
-
-	$file = askChoice('Please choose a file (ctrl+z to cancel)', $files);
 	
-	restoreDb($file, ['{{localhostDb}}', 'root', 'root'], false, true);
+	$file = askChoice('Please choose a file (ctrl+z to cancel)', $files);
+
+	restoreDb('{{localDbFilePath}}/'.$file, ['{{localhostDb}}', 'root', 'root'], true, true);
 });
 
 desc('Deploy your project');
@@ -218,6 +218,7 @@ function setLocalDbHost() {
 }
 
 function restoreDb($file, $db = ['{{db}}', '{{dbUser}}', '{{dbPassword}}'], $useGunzip = true, $runLocally = false) {
+	
 	setLocalDbHost();
 		
 	$host = '-h {{localDbHost}}';
@@ -233,7 +234,7 @@ function restoreDb($file, $db = ['{{db}}', '{{dbUser}}', '{{dbPassword}}'], $use
 		runLocally($command2);
 	} else {
 		run($command1);
-		run($command1);
+		run($command2);
 	}
 }
 

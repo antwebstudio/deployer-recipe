@@ -81,7 +81,13 @@ task('deploy:file_permission', function() {
 
 task('db:backup', function() {
 	$hostname = Task\Context::get()->getHost()->getHostname();
-	list($filename, $liveFilePath) = backupServerDb($hostname, '{{deploy_path}}/current');
+
+	$serverDbBackupPath = '{{deploy_path}}/current';
+	if ( !test('[ -d '.$serverDbBackupPath.' ]') ) {
+		$serverDbBackupPath = '{{deploy_path}}/release';
+	}
+	
+	list($filename, $liveFilePath) = backupServerDb($hostname, $serverDbBackupPath);
 	write('Backup: '.$liveFilePath);
 });
 

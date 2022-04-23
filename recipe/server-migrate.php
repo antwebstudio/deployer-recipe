@@ -44,13 +44,7 @@ class ServerMigrate {
 		$copyToPath = self::checkDownloadUsePath($sourceHost);
 		$downloadUrl = self::checkDownloadUrl($sourceHost);
 		
-		on(host($sourceHost), function($host) use(&$filename, $sourcePath, $copyToPath) {
-			within($sourcePath, function() use(&$filename, $copyToPath) {
-				$filename = zip('*');
-				
-				run('mv '.$filename.'.tar.gz '.$copyToPath);
-			});
-		});
+		self::zipAllFile($sourceHost, $sourcePath, $copyToPath);
 
 		on(host($destinationHost), function($host) use($filename, $destinationPath, $downloadUrl) {
 			within($destinationPath, function() use($filename, $downloadUrl) {
@@ -72,6 +66,18 @@ class ServerMigrate {
 			run('unlink '.$copyToPath.'/'.$filename.'.tar.gz');
 		});
 	}
+
+	public static function zipAllFile($sourceHost, $sourcePath, $copyToPath = null) {
+		on(host($sourceHost), function($host) use(&$filename, $sourcePath, $copyToPath) {
+			within($sourcePath, function() use(&$filename, $copyToPath) {
+				$filename = zip('*');
+				
+				if (isset($copyToPath)) {
+					run('mv '.$filename.'.tar.gz '.$copyToPath);
+				}
+			});
+		});
+	}
 }
 
 task('server-migrate:ask', function() {	
@@ -79,6 +85,15 @@ task('server-migrate:ask', function() {
 });
 
 set('downloadUsePath', '');
+
+task('server-migrate:zip-file', function() {
+	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
+	$path = getHostConfig($sourceHost, 'deploy_path');
+
+	writeln('File will be temporarily store in: ['.$sourceHost.']'. $path);
+
+	ServerMigrate::zipAllFile($sourceHost, $path);
+})->local();
 
 task('server-migrate:cache', function() {
 	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
@@ -160,10 +175,14 @@ task('server-migrate:chown', function() {
 task('server-migrate:file', function() {
 	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
 	
-	if (!askConfirmation('Are you sure to migrate server files from "'.$sourceHost.'" to "'.$destinationHost.'"?')) return;
-
 	$path = getHostConfig($sourceHost, 'deploy_path');
 	$newServerPath = getHostConfig($destinationHost, 'deploy_path');
+
+	writeln('Copy file from: ['.$sourceHost.']'. $path);
+	writeln('Copy file to: ['.$destinationHost.']'. $newServerPath);
+	// writeln('File will be temporarily store in: ['.$sourceHost.']'. $copyToPath);
+	
+	if (!askConfirmation('Are you sure to migrate server files from "'.$sourceHost.'" to "'.$destinationHost.'"?')) return;
 
 	ServerMigrate::copyFileAcrossHost($sourceHost, $path, $destinationHost, $newServerPath);
 })->local();
@@ -174,12 +193,14 @@ task('server-migrate:shared', function() {
 	$copyToPath = ServerMigrate::checkDownloadUsePath($sourceHost);
 	ServerMigrate::checkDownloadUrl($sourceHost);
 
-	writeln('File will be temporarily store in: '. $copyToPath);
-	
-	if (!askConfirmation('Are you sure to migrate server shared files from "'.$sourceHost.'" to "'.$destinationHost.'"?')) return;
-
 	$path = getHostConfig($sourceHost, 'deploy_path');
 	$newServerPath = getHostConfig($destinationHost, 'deploy_path');
+
+	writeln('Copy file from: ['.$sourceHost.']'. $path);
+	writeln('Copy file to: ['.$destinationHost.']'. $newServerPath);
+	writeln('File will be temporarily store in: ['.$sourceHost.']'. $copyToPath);
+	
+	if (!askConfirmation('Are you sure to migrate server shared files from "'.$sourceHost.'" to "'.$destinationHost.'"?')) return;
 
 	ServerMigrate::copyFileAcrossHost($sourceHost, $path.'/shared', $destinationHost, $newServerPath.'/shared');
 })->local();

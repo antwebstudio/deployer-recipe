@@ -5,8 +5,8 @@
 # Change to your host
 .host: &host
   <<: *base
-  hostname: server.antwebstudio.com # change this
-  user: antweb # change this
+  alias: server.antwebstudio.com # change this
+  remote_user: antweb # change this
   port: 22
 
 # Change to your database settings
@@ -37,5 +37,6 @@
   #theme: "{{application}}"
   #useTranslateManager: false
 
-beta:
-  <<: *app
+hosts:
+    beta:
+      <<: *app

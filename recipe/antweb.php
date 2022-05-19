@@ -28,11 +28,11 @@ task('ssh-key-copy', function() {
 });
 
 task('ssh-local', function() {
-	write(runLocally('eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa && ssh-add -L'));
+	writeln(runLocally('eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa && ssh-add -L'));
 })->once();
 
 task('ssh-key', function() {
-	write(run('eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa && ssh-add -L'));
+	writeln(run('eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa && ssh-add -L'));
 });
 
 task('ssh-generate', function() {
@@ -164,7 +164,7 @@ task('deploy-larvael', [
 	'deploy-common',
     'deploy:unlock',
     'cleanup',
-    'success'
+    'deploy:success'
 ]);
 
 desc('Deploy your project');
@@ -187,7 +187,7 @@ task('deploy-fusion-cms', [
 	'artisan:storage:link',
     'deploy:unlock',
     'cleanup',
-    'success'
+    'deploy:success'
 ]);
 
 task('fusion:symlink', function() {

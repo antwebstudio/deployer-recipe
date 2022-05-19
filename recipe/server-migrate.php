@@ -93,7 +93,7 @@ task('server-migrate:zip-file', function() {
 	writeln('File will be temporarily store in: ['.$sourceHost.']'. $path);
 
 	ServerMigrate::zipAllFile($sourceHost, $path);
-})->local();
+})->once()->runLocally();
 
 task('server-migrate:cache', function() {
 	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
@@ -105,7 +105,7 @@ task('server-migrate:cache', function() {
 			run('if [ -f artisan ]; then {{bin/php}} artisan cache:clear; fi');
 		});
 	});
-})->local();
+})->once()->runLocally();
 
 task('server-migrate:chmod', function() {
 	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
@@ -119,7 +119,7 @@ task('server-migrate:chmod', function() {
 			autoChmod($path);
 		}
 	});
-})->local();
+})->once()->runLocally();
 
 task('server-migrate:ls', function() {
 	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
@@ -131,7 +131,7 @@ task('server-migrate:ls', function() {
 			writeln(run('ls -l'));
 		});
 	});
-})->local();
+})->once()->runLocally();
 
 task('server-migrate:symlink', function() {
 	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
@@ -150,7 +150,7 @@ task('server-migrate:symlink', function() {
 		});
 	});
 
-})->local();
+})->once()->runLocally();
 
 task('server-migrate', [
 	'server-migrate:ask',
@@ -170,7 +170,7 @@ task('server-migrate:chown', function() {
 
 		run('chown -R '.$username.':'.$username.' '.$path);
 	});
-})->local();
+})->once()->runLocally();
 
 task('server-migrate:file', function() {
 	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
@@ -185,7 +185,7 @@ task('server-migrate:file', function() {
 	if (!askConfirmation('Are you sure to migrate server files from "'.$sourceHost.'" to "'.$destinationHost.'"?')) return;
 
 	ServerMigrate::copyFileAcrossHost($sourceHost, $path, $destinationHost, $newServerPath);
-})->local();
+})->once()->runLocally();
 
 task('server-migrate:shared', function() {
 	
@@ -203,7 +203,7 @@ task('server-migrate:shared', function() {
 	if (!askConfirmation('Are you sure to migrate server shared files from "'.$sourceHost.'" to "'.$destinationHost.'"?')) return;
 
 	ServerMigrate::copyFileAcrossHost($sourceHost, $path.'/shared', $destinationHost, $newServerPath.'/shared');
-})->local();
+})->once()->runLocally();
 
 task('server-migrate:db', function() {
 	list($sourceHost, $destinationHost) = ServerMigrate::askHosts();
@@ -265,7 +265,7 @@ task('server-migrate:db', function() {
 	// } else {
 	// }
 
-})->local();
+})->once()->runLocally();
 
 function zip($path, $filename = null) {
 	$filename = $filename ?? '_'.basename($path).'_'.date('Y-m-d_H-i-s');

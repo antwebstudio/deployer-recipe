@@ -1,10 +1,13 @@
 <?php
 namespace Deployer;
 
-require 'recipe/laravel.php';
-require 'recipe/antweb.php';
+$path = __DIR__.'/vendor/antweb/deployer-recipe/';
 
-inventory('hosts.yml');
+require 'recipe/laravel.php';
+require $path.'recipe/antweb.php';
+// require $path.'recipe/fusioncms.php';
+
+import('hosts.yml');
 
 // Project name
 //set('project_path', '{{release_path}}');
@@ -15,7 +18,7 @@ set('shared_files', [
 ]);
 set('shared_dirs', [
 	'storage',
-	'themes',
+	// 'themes',
 ]);
 
 // Writable dirs by web server 

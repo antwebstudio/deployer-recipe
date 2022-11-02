@@ -86,9 +86,11 @@ task('db:backup', function() {
 	if ( !test('[ -d '.$serverDbBackupPath.' ]') ) {
 		$serverDbBackupPath = '{{deploy_path}}/release';
 	}
-	
-	list($filename, $liveFilePath) = backupServerDb($hostname, $serverDbBackupPath);
-	write('Backup: '.$liveFilePath);
+
+	if ( test('[ -d '.$serverDbBackupPath.' ]') ) {
+		list($filename, $liveFilePath) = backupServerDb($hostname, $serverDbBackupPath);
+		write('Backup: '.$liveFilePath);
+	}
 });
 
 task('db:download', function() {
@@ -211,9 +213,10 @@ function backupServerDb($hostname, $backupPath = '{{current_path}}') {
 	}
 	
 	// Backup live db
+	$password = unescapeBash(get('dbPassword'));
 	run('if [ -f _dump.sql ]; then unlink _dump.sql; fi');
 	run('if [ -f _dump.sql.gz ]; then unlink _dump.sql.gz; fi');
-	run('{{bin/mysqldump}} --no-tablespaces  -u {{dbUser}} -p"{{dbPassword}}" {{db}} > _dump.sql && {{bin/gzip}} _dump.sql && mv _dump.sql.gz '.$liveFilePath);
+	run('{{bin/mysqldump}} --no-tablespaces  -u {{dbUser}} -p"'.$password.'" {{db}} > _dump.sql && {{bin/gzip}} _dump.sql && mv _dump.sql.gz '.$liveFilePath);
 
 	return [$filename, $liveFilePath];
 }
@@ -223,23 +226,31 @@ function setLocalDbHost() {
 	set('localDbHost', $hostIp);
 }
 
-function restoreDb($file, $db = ['{{db}}', '{{dbUser}}', '{{dbPassword}}'], $useGunzip = true, $runLocally = false) {
-	
+function restoreDb($file, $db = ['{{db}}', '{{dbUser}}', '{{dbPassword}}'], $useGunzip = null, $runLocally = false) {
+	if (!test('[ -f "'.$file.'" ]')) {
+		throw new \Exception('File '.$file.' is not exist. ');
+		writeln('exist');
+	}
+
 	setLocalDbHost();
 		
-	$host = '-h {{localDbHost}}';
+	$host = $runLocally ? '-h {{localDbHost}}' : '';
+	if (!isset($useGunzip)) $useGunzip = substr($file, -3) == '.gz';
+
 	$command2prefix = $useGunzip ? '{{bin/gunzip}} < '.$file.' | ' : '';
 	$command2suffix = $useGunzip ? '' : ' < '.$file;
+
+	$password = unescapeBash(parse($db[2]));
 	
-	$command1 = '{{bin/mysql}} '.$host.' -u '.$db[1].' -p"'.$db[2].'" -e "DROP DATABASE IF EXISTS \`'.$db[0].'\`; CREATE DATABASE \`'.$db[0].'\`"';
-	$command2 = 'mysql '.$host.' -D '.$db[0].' -u '.$db[1].' -p"'.$db[2].'" --default-character-set=utf8';
+	// $command1 = '{{bin/mysql}} '.$host.' -u '.$db[1].' -p"'.$password.'" -e "DROP DATABASE IF EXISTS \`'.$db[0].'\`; CREATE DATABASE \`'.$db[0].'\`"';
+	$command2 = 'mysql '.$host.' -D '.$db[0].' -u '.$db[1].' -p"'.$password.'" --default-character-set=utf8';
 	$command2 = $command2prefix . $command2 . $command2suffix;
 	
 	if ($runLocally) {
-		runLocally($command1);
+		// runLocally($command1);
 		runLocally($command2);
 	} else {
-		run($command1);
+		// run($command1);
 		run($command2);
 	}
 }
@@ -268,4 +279,51 @@ function getHostConfig($host, $name) {
 	} else {
 		return $host->config();
 	}
+}
+
+function serverFileNotEmpty($path) {
+	return test('[ -s '.$path.' ]');
+}
+
+function unescapeBash($string) {
+	return str_replace('$', '\\$', $string);
+}
+
+function runAsSudo($command) {
+	run('sudo '.$command, ['tty' => true]);
+}
+
+function runMySQL($statement, $dbHost = 'localhost', $dbUser = '{{dbUser}}', $dbPassword = '{{dbPassword}}', $sudo = false) {
+	$command = '{{bin/mysql}} -h '.$dbHost.' -u '.$dbUser;
+	if (isset($dbPassword)) $command .= ' -p"'.unescapeBash($dbPassword).'"';
+	$command .= ' -e "'.$statement.'"'; // -e option must be last option
+	
+	if ($sudo) {
+		runAsSudo($command);
+	} else {
+		run($command);
+	}
+}
+
+function runMySQLAsRoot($statement, $dbHost = 'localhost', $dbPassword = null) {
+	runMySQL($statement, $dbHost, 'root', $dbPassword, true);
+}
+
+function createMySQLDatabase($dbName, $username = 'root', $dbPassword = null, $dbHost = 'localhost') {
+	$statement = 'CREATE DATABASE \`'.$dbName.'\`';
+	if ($username == 'root') {
+		runMySQLAsRoot($statement, $dbHost, $dbPassword);
+	} else {
+		runMySQL($statement, $dbHost, $username, $dbPassword);
+	}
+	runMySQL('SHOW DATABASES', 'localhost', $username, $dbPassword);
+}
+
+function createMySQLUser($username, $password, $dbName = '*', $dbHost = 'localhost') {
+	runMySQLAsRoot('CREATE USER \''.$username.'\'@\''.$dbHost.'\' IDENTIFIED BY \''.unescapeBash($password).'\'');
+	grandMySQLUserPriviledges($username, $dbName, $dbHost);
+}
+
+function grandMySQLUserPriviledges($username, $dbName = '*', $dbHost = 'localhost') {
+	runMySQLAsRoot('GRANT ALL PRIVILEGES ON '.$dbName.'.* TO \''.$username.'\'@\''.$dbHost.'\' WITH GRANT OPTION; FLUSH PRIVILEGES;');
 }

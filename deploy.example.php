@@ -3,6 +3,7 @@ namespace Deployer;
 
 require 'recipe/laravel.php';
 require 'recipe/antweb.php';
+require 'recipe/antweb-laravel.php';
 
 inventory('hosts.yml');
 

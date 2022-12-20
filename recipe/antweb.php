@@ -281,6 +281,10 @@ function getHostConfig($host, $name) {
 	}
 }
 
+function serverFileExist($path) {
+	return test('[ -f '.$path.' ]');
+}
+
 function serverFileNotEmpty($path) {
 	return test('[ -s '.$path.' ]');
 }

@@ -22,7 +22,13 @@ task('fusion:sync-models', function() {
 
 task('fusion:restore-schema', function() {
     if (get('restoreSchema')) {
-        run('cd {{release_path}} && {{ bin/php }} artisan fusion:restore-schema --file={{restoreSchema}}');
+        within('{{release_path}}', function() use(&$installed) {
+            $restoreSchemaLockFile = '{{deploy_path}}/shared/fusion_schema_restored.lock';
+            if (!serverFileExist($restoreSchemaLockFile)) {
+                run('{{ bin/php }} artisan fusion:restore-schema --file={{restoreSchema}}');
+                run('touch '.$restoreSchemaLockFile);
+            }
+        });
     }
 });
 

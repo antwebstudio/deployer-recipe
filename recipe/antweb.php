@@ -23,19 +23,29 @@ task('ssh-add', function() {
 	runLocally('eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa');
 });
 
-task('ssh-key-copy', function() {
-	runLocally('ssh-copy-id -i ~/.ssh/id_rsa.pub {{user}}@{{hostname}} -p {{port}}');
+task('ssh:upload', function() {
+	runLocally('ssh-copy-id -p {{port}} -i ~/.ssh/id_rsa.pub {{user}}@{{hostname}}');
 });
 
 task('ssh-local', function() {
 	write(runLocally('eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa && ssh-add -L'));
 })->once();
 
-task('ssh-key', function() {
-	write(run('eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa && ssh-add -L'));
+task('ssh:key', function() {
+	if ( test('[ -f ~/.ssh/id_rsa ]') ) {
+		writeln('Please copy the following key to git repo. ');
+		// writeln(run('eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa'));
+		$key = run('eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa && ssh-add -L');
+		writeln('====');
+		$key = substr($key, stripos($key, "\n") + 1);
+		writeln($key);
+		// writeln(run('ssh-add -L'));
+	} else {
+		throw new \Exception('SSH key not exists, please generate a key using dep ssh:generate');
+	}
 });
 
-task('ssh-generate', function() {
+task('ssh:generate', function() {
 	run('ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa');
 });
 

@@ -60,7 +60,7 @@ task('info:packages', function() {
 task('info:version', function() {
 	$hostname = Task\Context::get()->getHost()->getHostname();
 	
-	write($hostname.': '.run('cd {{current_path}} && {{bin/git}} log --pretty="%H - %cd" -n 1')."\n");
+	writeln($hostname.': '.run('cd {{current_path}} && {{bin/git}} log --pretty="%H - %cd" -n 1')."\n");
 });
 
 task('composer:dumpautoload', function() {
@@ -99,7 +99,7 @@ task('db:backup', function() {
 
 	if ( test('[ -d '.$serverDbBackupPath.' ]') ) {
 		list($filename, $liveFilePath) = backupServerDb($hostname, $serverDbBackupPath);
-		write('Backup: '.$liveFilePath);
+		writeln('Backup: '.$liveFilePath);
 	}
 });
 

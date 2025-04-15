@@ -75,7 +75,7 @@ task('composer:update', function() {
 	run('cd {{current_path}} && {{bin/composer}} update --no-dev');
 });
 
-task('deploy:install', function () {
+task('deploy:install2', function () {
 	run('cd {{current_path}} && {{bin/composer}} setup -- --name="{{name}}" --theme={{theme}} --db={{db}} --dbUser={{dbUser}} --dbPassword={{dbPassword}} --dbPrefix={{dbPrefix}} --baseUrl={{baseUrl}} --useTranslateManager={{useTranslateManager}}');
 	
 	run('cd {{release_path}} && {{bin/yii}} setup --interactive=0');

@@ -35,6 +35,7 @@ task('fusion:restore-schema', function() {
 task('fusion:install', function() {
     if (!checkFusionInstallation()) {
         run('cd {{release_path}} && {{ bin/php }} artisan fusion:install --silent --host=localhost --database={{db}} --username={{dbUser}} --password={{dbPassword}} --charset=utf8mb4 --collation=utf8mb4_general_ci --production');
+        run('touch .fusion-installed');
     }
 });
 
@@ -65,7 +66,7 @@ function checkFusionInstallation()
 {
 	$installed = null;
 	within('{{release_path}}', function() use(&$installed) {
-		$installed = serverFileNotEmpty('{{deploy_path}}/shared/.env');
+		$installed = serverFileNotEmpty('{{deploy_path}}/shared/.fusion-installed');
 		if ($installed) {
 			writeln('installed');
 		} else {
